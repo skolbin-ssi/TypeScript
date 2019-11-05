@@ -4918,6 +4918,26 @@ namespace ts {
         circular?: boolean;
     }
 
+    export enum WatchFileKind {
+        FixedPollingInterval,
+        PriorityPollingInterval,
+        DynamicPriorityPolling,
+        UseFsEvents,
+        UseFsEventsOnParentDirectory,
+    }
+
+    export enum WatchDirectoryKind {
+        UseFsEvents,
+        FixedPollingInterval,
+        DynamicPriorityPolling,
+    }
+
+    export enum PollingWatchKind {
+        FixedInterval,
+        PriorityInterval,
+        DynamicPriority,
+    }
+
     export type CompilerOptionsValue = string | number | boolean | (string | number)[] | string[] | MapLike<string[]> | PluginImport[] | ProjectReference[] | null | undefined;
 
     export interface CompilerOptions {
@@ -5027,6 +5047,11 @@ namespace ts {
         esModuleInterop?: boolean;
         /* @internal */ showConfig?: boolean;
         useDefineForClassFields?: boolean;
+
+        // Watch options
+        watchFile?: WatchFileKind;
+        watchDirectory?: WatchDirectoryKind;
+        fallbackPolling?: PollingWatchKind;
 
         [option: string]: CompilerOptionsValue | TsConfigSourceFile | undefined;
     }
