@@ -447,6 +447,8 @@ namespace ts {
         getAccessibleSortedChildDirectories(path: string): readonly string[];
         directoryExists(dir: string): boolean;
         realpath(s: string): string;
+        setTimeout: NonNullable<System["setTimeout"]>;
+        clearTimeout: NonNullable<System["clearTimeout"]>;
     }
 
     /**
@@ -467,7 +469,10 @@ namespace ts {
         }
 
         const cache = createMap<HostDirectoryWatcher>();
-        const callbackCache = createMultiMap<DirectoryWatcherCallback>();
+        const callbackCache = createMultiMap<{ dirName: string; callback: DirectoryWatcherCallback; }>();
+        const cacheToUpdateChildWatches = createMap<{ dirName: string; options: CompilerOptions | undefined; }>();
+        let timerToUpdateChildWatches: any;
+
         const filePathComparer = getStringComparer(!host.useCaseSensitiveFileNames);
         const toCanonicalFilePath = createGetCanonicalFileName(host.useCaseSensitiveFileNames);
 
@@ -489,15 +494,16 @@ namespace ts {
                     watcher: host.watchDirectory(dirName, fileName => {
                         if (isIgnoredPath(fileName)) return;
 
-                        // Call the actual callback
-                        callbackCache.forEach((callbacks, rootDirName) => {
-                            if (rootDirName === dirPath || (startsWith(dirPath, rootDirName) && dirPath[rootDirName.length] === directorySeparator)) {
-                                callbacks.forEach(callback => callback(fileName));
-                            }
-                        });
+                        if (options?.synchronousWatchDirectory) {
+                            // Call the actual callback
+                            invokeCallbacks(dirPath, fileName);
 
-                        // Iterate through existing children and update the watches if needed
-                        updateChildWatches(dirName, dirPath, options);
+                            // Iterate through existing children and update the watches if needed
+                            updateChildWatches(dirName, dirPath, options);
+                        }
+                        else {
+                            nonSyncUpdateChildWatches(dirName, dirPath, fileName, options);
+                        }
                     }, /*recursive*/ false, options),
                     refCount: 1,
                     childWatches: emptyArray
@@ -506,15 +512,16 @@ namespace ts {
                 updateChildWatches(dirName, dirPath, options);
             }
 
-            if (callback) {
-                callbackCache.add(dirPath, callback);
+            const callbackToAdd = callback && { dirName, callback };
+            if (callbackToAdd) {
+                callbackCache.add(dirPath, callbackToAdd);
             }
 
             return {
                 dirName,
                 close: () => {
                     const directoryWatcher = Debug.assertDefined(cache.get(dirPath));
-                    if (callback) callbackCache.remove(dirPath, callback);
+                    if (callbackToAdd) callbackCache.remove(dirPath, callbackToAdd);
                     directoryWatcher.refCount--;
 
                     if (directoryWatcher.refCount) return;
@@ -524,6 +531,91 @@ namespace ts {
                     directoryWatcher.childWatches.forEach(closeFileWatcher);
                 }
             };
+        }
+
+        function invokeCallbacks(dirPath: Path, fileNameOrInvokeMap: string | Map<true>) {
+            let fileName: string | undefined;
+            let invokeMap: Map<true> | undefined;
+            if (isString(fileNameOrInvokeMap)) {
+                fileName = fileNameOrInvokeMap;
+            }
+            else {
+                invokeMap = fileNameOrInvokeMap;
+            }
+            // Call the actual callback
+            callbackCache.forEach((callbacks, rootDirName) => {
+                if (invokeMap && invokeMap.has(rootDirName)) return;
+                if (rootDirName === dirPath || (startsWith(dirPath, rootDirName) && dirPath[rootDirName.length] === directorySeparator)) {
+                    if (invokeMap) {
+                        invokeMap.set(rootDirName, true);
+                    }
+                    else {
+                        callbacks.forEach(({ callback }) => callback(fileName!));
+                    }
+                }
+            });
+        }
+
+        function nonSyncUpdateChildWatches(dirName: string, dirPath: Path, fileName: string, options: CompilerOptions | undefined) {
+            // Iterate through existing children and update the watches if needed
+            const parentWatcher = cache.get(dirPath);
+            if (parentWatcher && host.directoryExists(dirName)) {
+                // Schedule the update and postpone invoke for callbacks
+                scheduleUpdateChildWatches(dirName, dirPath, options);
+                return;
+            }
+
+            // Call the actual callbacks and remove child watches
+            invokeCallbacks(dirPath, fileName);
+            removeChildWatches(parentWatcher);
+        }
+
+        function scheduleUpdateChildWatches(dirName: string, dirPath: Path, options: CompilerOptions | undefined) {
+            if (!cacheToUpdateChildWatches.has(dirPath)) {
+                cacheToUpdateChildWatches.set(dirPath, { dirName, options });
+            }
+            if (timerToUpdateChildWatches) {
+                host.clearTimeout(timerToUpdateChildWatches);
+                timerToUpdateChildWatches = undefined;
+            }
+            timerToUpdateChildWatches = host.setTimeout(onTimerToUpdateChildWatches, 1000);
+        }
+
+        function onTimerToUpdateChildWatches() {
+            timerToUpdateChildWatches = undefined;
+            sysLog(`sysLog:: onTimerToUpdateChildWatches:: ${cacheToUpdateChildWatches.size}`);
+            const start = timestamp();
+            const invokeMap = createMap<true>();
+
+            while (!timerToUpdateChildWatches && cacheToUpdateChildWatches.size) {
+                const { value: [dirPath, { dirName, options }], done } = cacheToUpdateChildWatches.entries().next();
+                Debug.assert(!done);
+                cacheToUpdateChildWatches.delete(dirPath);
+                // Because the child refresh is fresh, we would need to invalidate whole root directory being watched
+                // to ensure that all the changes are reflected at this time
+                invokeCallbacks(dirPath as Path, invokeMap);
+                updateChildWatches(dirName, dirPath as Path, options);
+            }
+
+            sysLog(`sysLog:: invokingWatchers:: ${timestamp() - start}ms:: ${cacheToUpdateChildWatches.size}`);
+            callbackCache.forEach((callbacks, rootDirName) => {
+                if (invokeMap.has(rootDirName)) {
+                    callbacks.forEach(({ callback, dirName }) => callback(dirName));
+                }
+            });
+
+            const elapsed = timestamp() - start;
+            sysLog(`sysLog:: Elapsed ${elapsed}ms:: onTimerToUpdateChildWatches:: ${cacheToUpdateChildWatches.size} ${timerToUpdateChildWatches}`);
+        }
+
+        function removeChildWatches(parentWatcher: HostDirectoryWatcher | undefined) {
+            if (!parentWatcher) return;
+            const existingChildWatches = parentWatcher.childWatches;
+            parentWatcher.childWatches = emptyArray;
+            for (const childWatcher of existingChildWatches) {
+                childWatcher.close();
+                removeChildWatches(cache.get(toCanonicalFilePath(childWatcher.dirName)));
+            }
         }
 
         function updateChildWatches(dirName: string, dirPath: Path, options: CompilerOptions | undefined) {
@@ -633,6 +725,7 @@ namespace ts {
         // For dynamic polling watch file
         getModifiedTime: NonNullable<System["getModifiedTime"]>;
         setTimeout: NonNullable<System["setTimeout"]>;
+        clearTimeout: NonNullable<System["clearTimeout"]>;
         // For fs events :
         fsWatch: FsWatch;
         fileExists: System["fileExists"];
@@ -652,6 +745,7 @@ namespace ts {
         pollingWatchFile,
         getModifiedTime,
         setTimeout,
+        clearTimeout,
         fsWatch,
         fileExists,
         useCaseSensitiveFileNames,
@@ -764,7 +858,9 @@ namespace ts {
                     directoryExists,
                     getAccessibleSortedChildDirectories,
                     watchDirectory: nonRecursiveWatchDirectory,
-                    realpath
+                    realpath,
+                    setTimeout,
+                    clearTimeout
                 });
             }
             return hostRecursiveDirectoryWatcher(directoryName, callback, recursive, options);
@@ -1071,6 +1167,7 @@ namespace ts {
                 pollingWatchFile: createSingleFileWatcherPerName(fsWatchFileWorker, useCaseSensitiveFileNames),
                 getModifiedTime,
                 setTimeout,
+                clearTimeout,
                 fsWatch,
                 useCaseSensitiveFileNames,
                 fileExists,
