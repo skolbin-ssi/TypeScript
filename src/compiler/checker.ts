@@ -546,7 +546,6 @@ namespace ts {
             getNeverType: () => neverType,
             getOptionalType: () => optionalType,
             isSymbolAccessible,
-            getObjectFlags,
             isArrayType,
             isTupleType,
             isArrayLikeType,
@@ -589,21 +588,16 @@ namespace ts {
                     Debug.assert(!!(getNodeLinks(file).flags & NodeCheckFlags.TypeChecked));
 
                     diagnostics = addRange(diagnostics, suggestionDiagnostics.getDiagnostics(file.fileName));
-                    if (!file.isDeclarationFile && (!unusedIsError(UnusedKind.Local) || !unusedIsError(UnusedKind.Parameter))) {
-                        addUnusedDiagnostics();
-                    }
+                    checkUnusedIdentifiers(getPotentiallyUnusedIdentifiers(file), (containingNode, kind, diag) => {
+                        if (!containsParseError(containingNode) && !unusedIsError(kind, !!(containingNode.flags & NodeFlags.Ambient))) {
+                            (diagnostics || (diagnostics = [])).push({ ...diag, category: DiagnosticCategory.Suggestion });
+                        }
+                    });
+
                     return diagnostics || emptyArray;
                 }
                 finally {
                     cancellationToken = undefined;
-                }
-
-                function addUnusedDiagnostics() {
-                    checkUnusedIdentifiers(getPotentiallyUnusedIdentifiers(file), (containingNode, kind, diag) => {
-                        if (!containsParseError(containingNode) && !unusedIsError(kind)) {
-                            (diagnostics || (diagnostics = [])).push({ ...diag, category: DiagnosticCategory.Suggestion });
-                        }
-                    });
                 }
             },
 
@@ -644,6 +638,7 @@ namespace ts {
         const autoType = createIntrinsicType(TypeFlags.Any, "any");
         const wildcardType = createIntrinsicType(TypeFlags.Any, "any");
         const errorType = createIntrinsicType(TypeFlags.Any, "error");
+        const nonInferrableAnyType = createIntrinsicType(TypeFlags.Any, "any", ObjectFlags.ContainsWideningType);
         const unknownType = createIntrinsicType(TypeFlags.Unknown, "unknown");
         const undefinedType = createIntrinsicType(TypeFlags.Undefined, "undefined");
         const undefinedWideningType = strictNullChecks ? undefinedType : createIntrinsicType(TypeFlags.Undefined, "undefined", ObjectFlags.ContainsWideningType);
@@ -7162,7 +7157,11 @@ namespace ts {
             if (reportErrors && !declarationBelongsToPrivateAmbientMember(element)) {
                 reportImplicitAny(element, anyType);
             }
-            return anyType;
+            // When we're including the pattern in the type (an indication we're obtaining a contextual type), we
+            // use the non-inferrable any type. Inference will never directly infer this type, but it is possible
+            // to infer a type that contains it, e.g. for a binding pattern like [foo] or { foo }. In such cases,
+            // widening of the binding pattern type substitutes a regular any for the non-inferrable any.
+            return includePatternInType ? nonInferrableAnyType : anyType;
         }
 
         // Return the type implied by an object binding pattern
@@ -7194,6 +7193,7 @@ namespace ts {
             result.objectFlags |= objectFlags;
             if (includePatternInType) {
                 result.pattern = pattern;
+                result.objectFlags |= ObjectFlags.ContainsObjectOrArrayLiteral;
             }
             return result;
         }
@@ -7212,6 +7212,7 @@ namespace ts {
             if (includePatternInType) {
                 result = cloneTypeReference(result);
                 result.pattern = pattern;
+                result.objectFlags |= ObjectFlags.ContainsObjectOrArrayLiteral;
             }
             return result;
         }
@@ -10927,10 +10928,8 @@ namespace ts {
                     case "function":
                         checkNoTypeArguments(node);
                         return globalFunctionType;
-                    case "Array":
                     case "array":
                         return (!typeArgs || !typeArgs.length) && !noImplicitAny ? anyArrayType : undefined;
-                    case "Promise":
                     case "promise":
                         return (!typeArgs || !typeArgs.length) && !noImplicitAny ? createPromiseType(anyType) : undefined;
                     case "Object":
@@ -17033,7 +17032,7 @@ namespace ts {
                     return type.widened;
                 }
                 let result: Type | undefined;
-                if (type.flags & TypeFlags.Nullable) {
+                if (type.flags & (TypeFlags.Any | TypeFlags.Nullable)) {
                     result = anyType;
                 }
                 else if (isObjectLiteralType(type)) {
@@ -17543,7 +17542,8 @@ namespace ts {
                     // not contain anyFunctionType when we come back to this argument for its second round
                     // of inference. Also, we exclude inferences for silentNeverType (which is used as a wildcard
                     // when constructing types from type parameters that had no inference candidates).
-                    if (getObjectFlags(source) & ObjectFlags.NonInferrableType || source === silentNeverType || (priority & InferencePriority.ReturnType && (source === autoType || source === autoArrayType))) {
+                    if (getObjectFlags(source) & ObjectFlags.NonInferrableType || source === nonInferrableAnyType || source === silentNeverType ||
+                        (priority & InferencePriority.ReturnType && (source === autoType || source === autoArrayType))) {
                         return;
                     }
                     const inference = getInferenceInfoForType(target);
@@ -29611,7 +29611,7 @@ namespace ts {
 
         function registerForUnusedIdentifiersCheck(node: PotentiallyUnusedIdentifier): void {
             // May be in a call such as getTypeOfNode that happened to call this. But potentiallyUnusedIdentifiers is only defined in the scope of `checkSourceFile`.
-            if (produceDiagnostics && !(node.flags & NodeFlags.Ambient)) {
+            if (produceDiagnostics) {
                 const sourceFile = getSourceFileOfNode(node);
                 let potentiallyUnusedIdentifiers = allPotentiallyUnusedIdentifiers.get(sourceFile.path);
                 if (!potentiallyUnusedIdentifiers) {
@@ -29778,8 +29778,6 @@ namespace ts {
         }
 
         function checkUnusedLocalsAndParameters(nodeWithLocals: Node, addDiagnostic: AddUnusedDiagnostic): void {
-            if (nodeWithLocals.flags & NodeFlags.Ambient) return;
-
             // Ideally we could use the ImportClause directly as a key, but must wait until we have full ES6 maps. So must store key along with value.
             const unusedImports = createMap<[ImportClause, ImportedDeclaration[]]>();
             const unusedDestructures = createMap<[ObjectBindingPattern, BindingElement[]]>();
@@ -33151,7 +33149,10 @@ namespace ts {
             performance.measure("Check", "beforeCheck", "afterCheck");
         }
 
-        function unusedIsError(kind: UnusedKind): boolean {
+        function unusedIsError(kind: UnusedKind, isAmbient: boolean): boolean {
+            if (isAmbient) {
+                return false;
+            }
             switch (kind) {
                 case UnusedKind.Local:
                     return !!compilerOptions.noUnusedLocals;
@@ -33191,7 +33192,7 @@ namespace ts {
 
                 if (!node.isDeclarationFile && (compilerOptions.noUnusedLocals || compilerOptions.noUnusedParameters)) {
                     checkUnusedIdentifiers(getPotentiallyUnusedIdentifiers(node), (containingNode, kind, diag) => {
-                        if (!containsParseError(containingNode) && unusedIsError(kind)) {
+                        if (!containsParseError(containingNode) && unusedIsError(kind, !!(containingNode.flags & NodeFlags.Ambient))) {
                             diagnostics.add(diag);
                         }
                     });
