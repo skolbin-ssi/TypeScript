@@ -150,7 +150,7 @@ namespace ts {
      * returns a falsey value, then returns false.
      * If no such value is found, the callback is applied to each element of array and `true` is returned.
      */
-    export function every<T>(array: readonly T[], callback: (element: T, index: number) => boolean): boolean {
+    export function every<T>(array: readonly T[] | undefined, callback: (element: T, index: number) => boolean): boolean {
         if (array) {
             for (let i = 0; i < array.length; i++) {
                 if (!callback(array[i], i)) {
@@ -1201,6 +1201,14 @@ namespace ts {
         return values;
     }
 
+    export function arrayOf<T>(count: number, f: (index: number) => T): T[] {
+        const result = new Array(count);
+        for (let i = 0; i < count; i++) {
+            result[i] = f(i);
+        }
+        return result;
+    }
+
     /** Shims `Array.from`. */
     export function arrayFrom<T, U>(iterator: Iterator<T> | IterableIterator<T>, map: (t: T) => U): U[];
     export function arrayFrom<T>(iterator: Iterator<T> | IterableIterator<T>): T[];
@@ -1513,6 +1521,20 @@ namespace ts {
                 callback = undefined!;
             }
             return value;
+        };
+    }
+
+    /** A version of `memoize` that supports a single primitive argument */
+    export function memoizeOne<A extends string | number | boolean | undefined, T>(callback: (arg: A) => T): (arg: A) => T {
+        const map = createMap<T>();
+        return (arg: A) => {
+            const key = `${typeof arg}:${arg}`;
+            let value = map.get(key);
+            if (value === undefined && !map.has(key)) {
+                value = callback(arg);
+                map.set(key, value);
+            }
+            return value!;
         };
     }
 
@@ -2049,6 +2071,7 @@ namespace ts {
         let oldIndex = 0;
         const newLen = newItems.length;
         const oldLen = oldItems.length;
+        let hasChanges = false;
         while (newIndex < newLen && oldIndex < oldLen) {
             const newItem = newItems[newIndex];
             const oldItem = oldItems[oldIndex];
@@ -2056,10 +2079,12 @@ namespace ts {
             if (compareResult === Comparison.LessThan) {
                 inserted(newItem);
                 newIndex++;
+                hasChanges = true;
             }
             else if (compareResult === Comparison.GreaterThan) {
                 deleted(oldItem);
                 oldIndex++;
+                hasChanges = true;
             }
             else {
                 unchanged(oldItem, newItem);
@@ -2069,10 +2094,13 @@ namespace ts {
         }
         while (newIndex < newLen) {
             inserted(newItems[newIndex++]);
+            hasChanges = true;
         }
         while (oldIndex < oldLen) {
             deleted(oldItems[oldIndex++]);
+            hasChanges = true;
         }
+        return hasChanges;
     }
 
     export function fill<T>(length: number, cb: (index: number) => T): T[] {
