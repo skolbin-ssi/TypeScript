@@ -31,21 +31,49 @@ declare namespace ts {
     interface SortedArray<T> extends Array<T> {
         " __sortedArrayBrand": any;
     }
-    /** ES6 Map interface, only read methods included. */
-    interface ReadonlyMap<T> {
-        get(key: string): T | undefined;
-        has(key: string): boolean;
-        forEach(action: (value: T, key: string) => void): void;
+    /** Common read methods for ES6 Map/Set. */
+    interface ReadonlyCollection<K> {
         readonly size: number;
-        keys(): Iterator<string>;
-        values(): Iterator<T>;
-        entries(): Iterator<[string, T]>;
+        has(key: K): boolean;
+        keys(): Iterator<K>;
+    }
+    /** Common write methods for ES6 Map/Set. */
+    interface Collection<K> extends ReadonlyCollection<K> {
+        delete(key: K): boolean;
+        clear(): void;
+    }
+    /** ES6 Map interface, only read methods included. */
+    interface ReadonlyESMap<K, V> extends ReadonlyCollection<K> {
+        get(key: K): V | undefined;
+        values(): Iterator<V>;
+        entries(): Iterator<[K, V]>;
+        forEach(action: (value: V, key: K) => void): void;
+    }
+    /**
+     * ES6 Map interface, only read methods included.
+     */
+    interface ReadonlyMap<T> extends ReadonlyESMap<string, T> {
     }
     /** ES6 Map interface. */
-    interface Map<T> extends ReadonlyMap<T> {
-        set(key: string, value: T): this;
-        delete(key: string): boolean;
-        clear(): void;
+    interface ESMap<K, V> extends ReadonlyESMap<K, V>, Collection<K> {
+        set(key: K, value: V): this;
+    }
+    /**
+     * ES6 Map interface.
+     */
+    interface Map<T> extends ESMap<string, T> {
+    }
+    /** ES6 Set interface, only read methods included. */
+    interface ReadonlySet<T> extends ReadonlyCollection<T> {
+        has(value: T): boolean;
+        values(): Iterator<T>;
+        entries(): Iterator<[T, T]>;
+        forEach(action: (value: T, key: T) => void): void;
+    }
+    /** ES6 Set interface. */
+    interface Set<T> extends ReadonlySet<T>, Collection<T> {
+        add(value: T): this;
+        delete(value: T): boolean;
     }
     /** ES6 Iterator type. */
     interface Iterator<T> {
@@ -2202,6 +2230,7 @@ declare namespace ts {
         UseAliasDefinedOutsideCurrentScope = 16384,
         UseSingleQuotesForStringLiteralType = 268435456,
         NoTypeReduction = 536870912,
+        NoUndefinedOptionalParameterType = 1073741824,
         AllowThisInObjectLiteral = 32768,
         AllowQualifedNameInPlaceOfIdentifier = 65536,
         AllowAnonymousIdentifier = 131072,
@@ -2313,7 +2342,6 @@ declare namespace ts {
         Transient = 33554432,
         Assignment = 67108864,
         ModuleExports = 134217728,
-        Deprecated = 268435456,
         Enum = 384,
         Variable = 3,
         Value = 111551,
@@ -2387,20 +2415,10 @@ declare namespace ts {
         __escapedIdentifier: void;
     }) | InternalSymbolName;
     /** ReadonlyMap where keys are `__String`s. */
-    export interface ReadonlyUnderscoreEscapedMap<T> {
-        get(key: __String): T | undefined;
-        has(key: __String): boolean;
-        forEach(action: (value: T, key: __String) => void): void;
-        readonly size: number;
-        keys(): Iterator<__String>;
-        values(): Iterator<T>;
-        entries(): Iterator<[__String, T]>;
+    export interface ReadonlyUnderscoreEscapedMap<T> extends ReadonlyESMap<__String, T> {
     }
     /** Map where keys are `__String`s. */
-    export interface UnderscoreEscapedMap<T> extends ReadonlyUnderscoreEscapedMap<T> {
-        set(key: __String, value: T): this;
-        delete(key: __String): boolean;
-        clear(): void;
+    export interface UnderscoreEscapedMap<T> extends ESMap<__String, T>, ReadonlyUnderscoreEscapedMap<T> {
     }
     /** SymbolTable based on ES6 Map interface. */
     export type SymbolTable = UnderscoreEscapedMap<Symbol>;
@@ -2451,7 +2469,6 @@ declare namespace ts {
         Instantiable = 63176704,
         StructuredOrInstantiable = 66846720,
         Narrowable = 133970943,
-        NotUnionOrUnit = 67637251,
     }
     export type DestructuringPattern = BindingPattern | ObjectLiteralExpression | ArrayLiteralExpression;
     export interface Type {
@@ -2745,6 +2762,7 @@ declare namespace ts {
         disableSizeLimit?: boolean;
         disableSourceOfProjectReferenceRedirect?: boolean;
         disableSolutionSearching?: boolean;
+        disableReferencedProjectLoad?: boolean;
         downlevelIteration?: boolean;
         emitBOM?: boolean;
         emitDecoratorMetadata?: boolean;
@@ -3884,6 +3902,7 @@ declare namespace ts {
         isUnterminated(): boolean;
         reScanGreaterToken(): SyntaxKind;
         reScanSlashToken(): SyntaxKind;
+        reScanAsteriskEqualsToken(): SyntaxKind;
         reScanTemplateToken(isTaggedTemplate: boolean): SyntaxKind;
         reScanTemplateHeadOrNoSubstitutionTemplate(): SyntaxKind;
         scanJsxIdentifier(): SyntaxKind;
@@ -5469,6 +5488,10 @@ declare namespace ts {
         getEditsForFileRename(oldFilePath: string, newFilePath: string, formatOptions: FormatCodeSettings, preferences: UserPreferences | undefined): readonly FileTextChanges[];
         getEmitOutput(fileName: string, emitOnlyDtsFiles?: boolean, forceDtsEmit?: boolean): EmitOutput;
         getProgram(): Program | undefined;
+        toggleLineComment(fileName: string, textRange: TextRange): TextChange[];
+        toggleMultilineComment(fileName: string, textRange: TextRange): TextChange[];
+        commentSelection(fileName: string, textRange: TextRange): TextChange[];
+        uncommentSelection(fileName: string, textRange: TextRange): TextChange[];
         dispose(): void;
     }
     interface JsxClosingTagInfo {
@@ -7073,6 +7096,16 @@ declare namespace ts {
     const getMutableClone: <T extends Node>(node: T) => T;
     /** @deprecated Use `isTypeAssertionExpression` instead. */
     const isTypeAssertion: (node: Node) => node is TypeAssertion;
+    /**
+     * @deprecated Use `ts.ReadonlyESMap<K, V>` instead.
+     */
+    interface ReadonlyMap<T> extends ReadonlyESMap<string, T> {
+    }
+    /**
+     * @deprecated Use `ts.ESMap<K, V>` instead.
+     */
+    interface Map<T> extends ESMap<string, T> {
+    }
 }
 
 export = ts;

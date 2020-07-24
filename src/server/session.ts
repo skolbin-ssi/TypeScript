@@ -262,7 +262,7 @@ namespace ts.server {
 
     type Projects = readonly Project[] | {
         readonly projects: readonly Project[];
-        readonly symLinkedProjects: MultiMap<Project>;
+        readonly symLinkedProjects: MultiMap<Path, Project>;
     };
 
     /**
@@ -277,7 +277,7 @@ namespace ts.server {
         const outputs = flatMapToMutable(isArray(projects) ? projects : projects.projects, project => action(project, defaultValue));
         if (!isArray(projects) && projects.symLinkedProjects) {
             projects.symLinkedProjects.forEach((projects, path) => {
-                const value = getValue(path as Path);
+                const value = getValue(path);
                 outputs.push(...flatMap(projects, project => action(project, value)));
             });
         }
@@ -423,7 +423,7 @@ namespace ts.server {
     ): void {
         const projectService = defaultProject.projectService;
         let toDo: ProjectAndLocation<TLocation>[] | undefined;
-        const seenProjects = createMap<true>();
+        const seenProjects = new Set<string>();
         forEachProjectInProjects(projects, initialLocation && initialLocation.fileName, (project, path) => {
             // TLocation should be either `DocumentPosition` or `undefined`. Since `initialLocation` is `TLocation` this cast should be valid.
             const location = (initialLocation ? { fileName: path, pos: initialLocation.pos } : undefined) as TLocation;
@@ -496,7 +496,7 @@ namespace ts.server {
         location: TLocation,
         projectService: ProjectService,
         toDo: ProjectAndLocation<TLocation>[] | undefined,
-        seenProjects: Map<true>,
+        seenProjects: Set<string>,
         cb: CombineProjectOutputCallback<TLocation>,
     ): ProjectAndLocation<TLocation>[] | undefined {
         if (project.getCancellationToken().isCancellationRequested()) return undefined; // Skip rest of toDo if cancelled
@@ -517,7 +517,7 @@ namespace ts.server {
             if (symlinkedProjectsMap) {
                 symlinkedProjectsMap.forEach((symlinkedProjects, symlinkedPath) => {
                     for (const symlinkedProject of symlinkedProjects) {
-                        addToTodo(symlinkedProject, { fileName: symlinkedPath, pos: originalLocation.pos } as TLocation, toDo!, seenProjects);
+                        addToTodo(symlinkedProject, { fileName: symlinkedPath as string, pos: originalLocation.pos } as TLocation, toDo!, seenProjects);
                     }
                 });
             }
@@ -526,12 +526,12 @@ namespace ts.server {
         return toDo;
     }
 
-    function addToTodo<TLocation extends DocumentPosition | undefined>(project: Project, location: TLocation, toDo: Push<ProjectAndLocation<TLocation>>, seenProjects: Map<true>): void {
+    function addToTodo<TLocation extends DocumentPosition | undefined>(project: Project, location: TLocation, toDo: Push<ProjectAndLocation<TLocation>>, seenProjects: Set<string>): void {
         if (addToSeen(seenProjects, project)) toDo.push({ project, location });
     }
 
-    function addToSeen(seenProjects: Map<true>, project: Project) {
-        return ts.addToSeen(seenProjects, getProjectKey(project));
+    function addToSeen(seenProjects: Set<string>, project: Project) {
+        return tryAddToSet(seenProjects, getProjectKey(project));
     }
 
     function getProjectKey(project: Project) {
@@ -1360,7 +1360,7 @@ namespace ts.server {
 
         private getProjects(args: protocol.FileRequestArgs, getScriptInfoEnsuringProjectsUptoDate?: boolean, ignoreNoProjectError?: boolean): Projects {
             let projects: readonly Project[] | undefined;
-            let symLinkedProjects: MultiMap<Project> | undefined;
+            let symLinkedProjects: MultiMap<Path, Project> | undefined;
             if (args.projectFileName) {
                 const project = this.getProject(args.projectFileName);
                 if (project) {
@@ -1434,7 +1434,7 @@ namespace ts.server {
         }
 
         private toSpanGroups(locations: readonly RenameLocation[]): readonly protocol.SpanGroup[] {
-            const map = createMap<protocol.SpanGroup>();
+            const map = new Map<string, protocol.SpanGroup>();
             for (const { fileName, textSpan, contextSpan, originalContextSpan: _2, originalTextSpan: _, originalFileName: _1, ...prefixSuffixText } of locations) {
                 let group = map.get(fileName);
                 if (!group) map.set(fileName, group = { file: fileName, locs: [] });
@@ -2012,14 +2012,19 @@ namespace ts.server {
                 position = getPosition(args);
             }
             else {
-                const { startPosition, endPosition } = this.getStartAndEndPosition(args, scriptInfo);
-                textRange = { pos: startPosition, end: endPosition };
+                textRange = this.getRange(args, scriptInfo);
             }
             return Debug.checkDefined(position === undefined ? textRange : position);
 
             function getPosition(loc: protocol.FileLocationRequestArgs) {
                 return loc.position !== undefined ? loc.position : scriptInfo.lineOffsetToPosition(loc.line, loc.offset);
             }
+        }
+
+        private getRange(args: protocol.FileRangeRequestArgs, scriptInfo: ScriptInfo): TextRange {
+            const { startPosition, endPosition } = this.getStartAndEndPosition(args, scriptInfo);
+
+            return { pos: startPosition, end: endPosition };
         }
 
         private getApplicableRefactors(args: protocol.GetApplicableRefactorsRequestArgs): protocol.ApplicableRefactorInfo[] {
@@ -2251,6 +2256,70 @@ namespace ts.server {
             });
         }
 
+        private toggleLineComment(args: protocol.FileRangeRequestArgs, simplifiedResult: boolean): TextChange[] | protocol.CodeEdit[] {
+            const { file, languageService } = this.getFileAndLanguageServiceForSyntacticOperation(args);
+            const scriptInfo = this.projectService.getScriptInfo(file)!;
+            const textRange = this.getRange(args, scriptInfo);
+
+            const textChanges = languageService.toggleLineComment(file, textRange);
+
+            if (simplifiedResult) {
+                const scriptInfo = this.projectService.getScriptInfoForNormalizedPath(file)!;
+
+                return textChanges.map(textChange => this.convertTextChangeToCodeEdit(textChange, scriptInfo));
+            }
+
+            return textChanges;
+        }
+
+        private toggleMultilineComment(args: protocol.FileRangeRequestArgs, simplifiedResult: boolean): TextChange[] | protocol.CodeEdit[] {
+            const { file, languageService } = this.getFileAndLanguageServiceForSyntacticOperation(args);
+            const scriptInfo = this.projectService.getScriptInfoForNormalizedPath(file)!;
+            const textRange = this.getRange(args, scriptInfo);
+
+            const textChanges = languageService.toggleMultilineComment(file, textRange);
+
+            if (simplifiedResult) {
+                const scriptInfo = this.projectService.getScriptInfoForNormalizedPath(file)!;
+
+                return textChanges.map(textChange => this.convertTextChangeToCodeEdit(textChange, scriptInfo));
+            }
+
+            return textChanges;
+        }
+
+        private commentSelection(args: protocol.FileRangeRequestArgs, simplifiedResult: boolean): TextChange[] | protocol.CodeEdit[] {
+            const { file, languageService } = this.getFileAndLanguageServiceForSyntacticOperation(args);
+            const scriptInfo = this.projectService.getScriptInfoForNormalizedPath(file)!;
+            const textRange = this.getRange(args, scriptInfo);
+
+            const textChanges = languageService.commentSelection(file, textRange);
+
+            if (simplifiedResult) {
+                const scriptInfo = this.projectService.getScriptInfoForNormalizedPath(file)!;
+
+                return textChanges.map(textChange => this.convertTextChangeToCodeEdit(textChange, scriptInfo));
+            }
+
+            return textChanges;
+        }
+
+        private uncommentSelection(args: protocol.FileRangeRequestArgs, simplifiedResult: boolean): TextChange[] | protocol.CodeEdit[] {
+            const { file, languageService } = this.getFileAndLanguageServiceForSyntacticOperation(args);
+            const scriptInfo = this.projectService.getScriptInfoForNormalizedPath(file)!;
+            const textRange = this.getRange(args, scriptInfo);
+
+            const textChanges = languageService.uncommentSelection(file, textRange);
+
+            if (simplifiedResult) {
+                const scriptInfo = this.projectService.getScriptInfoForNormalizedPath(file)!;
+
+                return textChanges.map(textChange => this.convertTextChangeToCodeEdit(textChange, scriptInfo));
+            }
+
+            return textChanges;
+        }
+
         private mapSelectionRange(selectionRange: SelectionRange, scriptInfo: ScriptInfo): protocol.SelectionRange {
             const result: protocol.SelectionRange = {
                 textSpan: toProtocolTextSpan(selectionRange.textSpan, scriptInfo),
@@ -2338,7 +2407,7 @@ namespace ts.server {
             return { response, responseRequired: true };
         }
 
-        private handlers = createMapFromTemplate<(request: protocol.Request) => HandlerResponse>({
+        private handlers = new Map(getEntries<(request: protocol.Request) => HandlerResponse>({
             [CommandNames.Status]: () => {
                 const response: protocol.StatusResponseBody = { version: ts.version }; // eslint-disable-line @typescript-eslint/no-unnecessary-qualifier
                 return this.requiredResponse(response);
@@ -2697,7 +2766,31 @@ namespace ts.server {
             [CommandNames.ProvideCallHierarchyOutgoingCalls]: (request: protocol.ProvideCallHierarchyOutgoingCallsRequest) => {
                 return this.requiredResponse(this.provideCallHierarchyOutgoingCalls(request.arguments));
             },
-        });
+            [CommandNames.ToggleLineComment]: (request: protocol.ToggleLineCommentRequest) => {
+                return this.requiredResponse(this.toggleLineComment(request.arguments, /*simplifiedResult*/ true));
+            },
+            [CommandNames.ToggleLineCommentFull]: (request: protocol.ToggleLineCommentRequest) => {
+                return this.requiredResponse(this.toggleLineComment(request.arguments, /*simplifiedResult*/ false));
+            },
+            [CommandNames.ToggleMultilineComment]: (request: protocol.ToggleMultilineCommentRequest) => {
+                return this.requiredResponse(this.toggleMultilineComment(request.arguments, /*simplifiedResult*/ true));
+            },
+            [CommandNames.ToggleMultilineCommentFull]: (request: protocol.ToggleMultilineCommentRequest) => {
+                return this.requiredResponse(this.toggleMultilineComment(request.arguments, /*simplifiedResult*/ false));
+            },
+            [CommandNames.CommentSelection]: (request: protocol.CommentSelectionRequest) => {
+                return this.requiredResponse(this.commentSelection(request.arguments, /*simplifiedResult*/ true));
+            },
+            [CommandNames.CommentSelectionFull]: (request: protocol.CommentSelectionRequest) => {
+                return this.requiredResponse(this.commentSelection(request.arguments, /*simplifiedResult*/ false));
+            },
+            [CommandNames.UncommentSelection]: (request: protocol.UncommentSelectionRequest) => {
+                return this.requiredResponse(this.uncommentSelection(request.arguments, /*simplifiedResult*/ true));
+            },
+            [CommandNames.UncommentSelectionFull]: (request: protocol.UncommentSelectionRequest) => {
+                return this.requiredResponse(this.uncommentSelection(request.arguments, /*simplifiedResult*/ false));
+            },
+        }));
 
         public addProtocolHandler(command: string, handler: (request: protocol.Request) => HandlerResponse) {
             if (this.handlers.has(command)) {
