@@ -72,6 +72,7 @@ namespace Harness {
 
                 for (const file of fs.readdirSync(folder)) {
                     const pathToFile = pathModule.join(folder, file);
+                    if (!fs.existsSync(pathToFile)) continue; // ignore invalid symlinks
                     const stat = fs.statSync(pathToFile);
                     if (options.recursive && stat.isDirectory()) {
                         paths = paths.concat(filesInFolder(pathToFile));
@@ -1381,7 +1382,7 @@ namespace Harness {
                 else {
                     IO.writeFile(actualFileName, encodedActual);
                 }
-                if (require && opts && opts.PrintDiff) {
+                if (!!require && opts && opts.PrintDiff) {
                     const Diff = require("diff");
                     const patch = Diff.createTwoFilesPatch("Expected", "Actual", expected, actual, "The current baseline", "The new version");
                     throw new Error(`The baseline file ${relativeFileName} has changed.${ts.ForegroundColorEscapeSequences.Grey}\n\n${patch}`);
