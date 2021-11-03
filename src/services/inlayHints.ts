@@ -64,18 +64,18 @@ namespace ts.InlayHints {
                 visitCallOrNewExpression(node);
             }
             else {
-                if (preferences.includeInlayFunctionParameterTypeHints && isFunctionExpressionLike(node)) {
-                    visitFunctionExpressionLikeForParameterType(node);
+                if (preferences.includeInlayFunctionParameterTypeHints && isFunctionLikeDeclaration(node) && hasContextSensitiveParameters(node)) {
+                    visitFunctionLikeForParameterType(node);
                 }
-                if (preferences.includeInlayFunctionLikeReturnTypeHints && isFunctionLikeDeclaration(node)) {
+                if (preferences.includeInlayFunctionLikeReturnTypeHints && isSignatureSupportingReturnAnnotation(node)) {
                     visitFunctionDeclarationLikeForReturnType(node);
                 }
             }
             return forEachChild(node, visitor);
         }
 
-        function isFunctionExpressionLike(node: Node): node is ArrowFunction | FunctionExpression {
-            return isArrowFunction(node) || isFunctionExpression(node);
+        function isSignatureSupportingReturnAnnotation(node: Node): node is FunctionDeclaration | ArrowFunction | FunctionExpression | MethodDeclaration | GetAccessorDeclaration {
+            return isArrowFunction(node) || isFunctionExpression(node) || isFunctionDeclaration(node) || isMethodDeclaration(node) || isGetAccessorDeclaration(node);
         }
 
         function addParameterHints(text: string, position: number, isFirstVariadicArgument: boolean) {
@@ -156,7 +156,7 @@ namespace ts.InlayHints {
             for (let i = 0; i < args.length; ++i) {
                 const originalArg = args[i];
                 const arg = skipParentheses(originalArg);
-                if (shouldShowLiteralParameterNameHintsOnly(preferences) && !isHintableExpression(arg)) {
+                if (shouldShowLiteralParameterNameHintsOnly(preferences) && !isHintableLiteral(arg)) {
                     continue;
                 }
 
@@ -202,11 +202,27 @@ namespace ts.InlayHints {
             return some(ranges, range => regex.test(sourceFileText.substring(range.pos, range.end)));
         }
 
-        function isHintableExpression(node: Node) {
-            return isLiteralExpression(node) || isBooleanLiteral(node) || isFunctionExpressionLike(node) || isObjectLiteralExpression(node) || isArrayLiteralExpression(node);
+        function isHintableLiteral(node: Node) {
+            switch (node.kind) {
+                case SyntaxKind.PrefixUnaryExpression: {
+                    const operand = (node as PrefixUnaryExpression).operand;
+                    return isLiteralExpression(operand) || isIdentifier(operand) && isInfinityOrNaNString(operand.escapedText);
+                }
+                case SyntaxKind.TrueKeyword:
+                case SyntaxKind.FalseKeyword:
+                case SyntaxKind.NullKeyword:
+                case SyntaxKind.NoSubstitutionTemplateLiteral:
+                case SyntaxKind.TemplateExpression:
+                    return true;
+                case SyntaxKind.Identifier: {
+                    const name = (node as Identifier).escapedText;
+                    return isUndefined(name) || isInfinityOrNaNString(name);
+                }
+            }
+            return isLiteralExpression(node);
         }
 
-        function visitFunctionDeclarationLikeForReturnType(decl: FunctionLikeDeclaration) {
+        function visitFunctionDeclarationLikeForReturnType(decl: FunctionDeclaration | ArrowFunction | FunctionExpression | MethodDeclaration | GetAccessorDeclaration) {
             if (isArrowFunction(decl)) {
                 if (!findChildOfKind(decl, SyntaxKind.OpenParenToken, file)) {
                     return;
@@ -236,7 +252,7 @@ namespace ts.InlayHints {
             addTypeHints(typeDisplayString, getTypeAnnotationPosition(decl));
         }
 
-        function getTypeAnnotationPosition(decl: FunctionLikeDeclaration) {
+        function getTypeAnnotationPosition(decl: FunctionDeclaration | ArrowFunction | FunctionExpression | MethodDeclaration | GetAccessorDeclaration) {
             const closeParenToken = findChildOfKind(decl, SyntaxKind.CloseParenToken, file);
             if (closeParenToken) {
                 return closeParenToken.end;
@@ -244,24 +260,14 @@ namespace ts.InlayHints {
             return decl.parameters.end;
         }
 
-        function visitFunctionExpressionLikeForParameterType(expr: ArrowFunction | FunctionExpression) {
-            if (!expr.parameters.length || expr.parameters.every(param => !!getEffectiveTypeAnnotationNode(param))) {
-                return;
-            }
-
-            const contextualType = checker.getContextualType(expr);
-            if (!contextualType) {
-                return;
-            }
-
-            const signatures = checker.getSignaturesOfType(contextualType, SignatureKind.Call);
-            const signature = firstOrUndefined(signatures);
+        function visitFunctionLikeForParameterType(node: FunctionLikeDeclaration) {
+            const signature = checker.getSignatureFromDeclaration(node);
             if (!signature) {
                 return;
             }
 
-            for (let i = 0; i < expr.parameters.length && i < signature.parameters.length; ++i) {
-                const param = expr.parameters[i];
+            for (let i = 0; i < node.parameters.length && i < signature.parameters.length; ++i) {
+                const param = node.parameters[i];
                 const effectiveTypeAnnotation = getEffectiveTypeAnnotationNode(param);
 
                 if (effectiveTypeAnnotation) {
@@ -273,7 +279,7 @@ namespace ts.InlayHints {
                     continue;
                 }
 
-                addTypeHints(typeDisplayString, param.end);
+                addTypeHints(typeDisplayString, param.name.end);
             }
         }
 
@@ -308,6 +314,10 @@ namespace ts.InlayHints {
                 Debug.assertIsDefined(typeNode, "should always get typenode");
                 printer.writeNode(EmitHint.Unspecified, typeNode, /*sourceFile*/ file, writer);
             });
+        }
+
+        function isUndefined(name: __String) {
+            return name === "undefined";
         }
     }
 }

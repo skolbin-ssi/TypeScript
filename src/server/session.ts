@@ -1452,10 +1452,10 @@ namespace ts.server {
             });
         }
 
-        private provideInlayHints(args: protocol.InlayHintsRequestArgs) {
-            const { file, languageService } = this.getFileAndLanguageServiceForSyntacticOperation(args);
+        private provideInlayHints(args: protocol.InlayHintsRequestArgs): readonly protocol.InlayHintItem[] {
+            const { file, project } = this.getFileAndProject(args);
             const scriptInfo = this.projectService.getScriptInfoForNormalizedPath(file)!;
-            const hints = languageService.provideInlayHints(file, args, this.getPreferences(file));
+            const hints = project.getLanguageService().provideInlayHints(file, args, this.getPreferences(file));
 
             return hints.map(hint => ({
                 ...hint,
@@ -1536,19 +1536,21 @@ namespace ts.server {
             const file = toNormalizedPath(args.file);
             const position = this.getPositionInFile(args, file);
             const projects = this.getProjects(args);
+            const defaultProject = this.getDefaultProject(args);
+            const renameInfo: protocol.RenameInfo = this.mapRenameInfo(
+                defaultProject.getLanguageService().getRenameInfo(file, position, { allowRenameOfImportPath: this.getPreferences(file).allowRenameOfImportPath }), Debug.checkDefined(this.projectService.getScriptInfo(file)));
+
+            if (!renameInfo.canRename) return simplifiedResult ? { info: renameInfo, locs: [] } : [];
 
             const locations = combineProjectOutputForRenameLocations(
                 projects,
-                this.getDefaultProject(args),
+                defaultProject,
                 { fileName: args.file, pos: position },
                 !!args.findInStrings,
                 !!args.findInComments,
                 this.getPreferences(file)
             );
             if (!simplifiedResult) return locations;
-
-            const defaultProject = this.getDefaultProject(args);
-            const renameInfo: protocol.RenameInfo = this.mapRenameInfo(defaultProject.getLanguageService().getRenameInfo(file, position, { allowRenameOfImportPath: this.getPreferences(file).allowRenameOfImportPath }), Debug.checkDefined(this.projectService.getScriptInfo(file)));
             return { info: renameInfo, locs: this.toSpanGroups(locations) };
         }
 

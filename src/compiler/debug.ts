@@ -221,7 +221,7 @@ namespace ts {
                 assert(
                     node !== undefined && (test === undefined || test(node)),
                     message || "Unexpected node.",
-                    () => `Node ${formatSyntaxKind(node!.kind)} did not pass test '${getFunctionName(test!)}'.`,
+                    () => `Node ${formatSyntaxKind(node?.kind)} did not pass test '${getFunctionName(test!)}'.`,
                     stackCrawlMark || assertNode);
             }
         }
@@ -246,7 +246,7 @@ namespace ts {
                 assert(
                     test === undefined || node === undefined || test(node),
                     message || "Unexpected node.",
-                    () => `Node ${formatSyntaxKind(node!.kind)} did not pass test '${getFunctionName(test!)}'.`,
+                    () => `Node ${formatSyntaxKind(node?.kind)} did not pass test '${getFunctionName(test!)}'.`,
                     stackCrawlMark || assertOptionalNode);
             }
         }
@@ -259,7 +259,7 @@ namespace ts {
                 assert(
                     kind === undefined || node === undefined || node.kind === kind,
                     message || "Unexpected node.",
-                    () => `Node ${formatSyntaxKind(node!.kind)} was not a '${formatSyntaxKind(kind)}' token.`,
+                    () => `Node ${formatSyntaxKind(node?.kind)} was not a '${formatSyntaxKind(kind)}' token.`,
                     stackCrawlMark || assertOptionalToken);
             }
         }
@@ -349,6 +349,10 @@ namespace ts {
 
         export function formatSyntaxKind(kind: SyntaxKind | undefined): string {
             return formatEnum(kind, (ts as any).SyntaxKind, /*isFlags*/ false);
+        }
+
+        export function formatSnippetKind(kind: SnippetKind | undefined): string {
+            return formatEnum(kind, (ts as any).SnippetKind, /*isFlags*/ false);
         }
 
         export function formatNodeFlags(flags: NodeFlags | undefined): string {
