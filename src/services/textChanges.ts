@@ -339,6 +339,7 @@ namespace ts.textChanges {
             this.deletedNodes.push({ sourceFile, node });
         }
 
+        /** Stop! Consider using `delete` instead, which has logic for deleting nodes from delimited lists. */
         public deleteNode(sourceFile: SourceFile, node: Node, options: ConfigurableStartEnd = { leadingTriviaOption: LeadingTriviaOption.IncludeAll }): void {
             this.deleteRange(sourceFile, getAdjustedRange(sourceFile, node, node, options));
         }
@@ -492,6 +493,31 @@ namespace ts.textChanges {
             const startPosition = getPrecedingNonSpaceCharacterPosition(sourceFile.text, fnStart - 1);
             const indent = sourceFile.text.slice(startPosition, fnStart);
             this.insertNodeAt(sourceFile, fnStart, tag, { preserveLeadingWhitespace: false, suffix: this.newLineCharacter + indent });
+        }
+
+        public addJSDocTags(sourceFile: SourceFile, parent: HasJSDoc, newTags: readonly JSDocTag[]): void {
+            const comments = flatMap(parent.jsDoc, j => typeof j.comment === "string" ? factory.createJSDocText(j.comment) : j.comment) as JSDocComment[];
+            const oldTags = flatMapToMutable(parent.jsDoc, j => j.tags);
+            const unmergedNewTags = newTags.filter(newTag => !oldTags.some((tag, i) => {
+                const merged = tryMergeJsdocTags(tag, newTag);
+                if (merged) oldTags[i] = merged;
+                return !!merged;
+            }));
+            const tags = [...oldTags, ...unmergedNewTags];
+            const jsDoc = singleOrUndefined(parent.jsDoc);
+            const comment = jsDoc && positionsAreOnSameLine(jsDoc.pos, jsDoc.end, sourceFile) && !length(comments) ? undefined :
+                factory.createNodeArray(intersperse(comments, factory.createJSDocText("\n")));
+            const tag = factory.createJSDocComment(comment, factory.createNodeArray(tags));
+            const host = updateJSDocHost(parent);
+            this.insertJsdocCommentBefore(sourceFile, host, tag);
+        }
+
+        public filterJSDocTags(sourceFile: SourceFile, parent: HasJSDoc, predicate: (tag: JSDocTag) => boolean): void {
+            const comments = flatMap(parent.jsDoc, j => typeof j.comment === "string" ? factory.createJSDocText(j.comment) : j.comment) as JSDocComment[];
+            const oldTags = flatMapToMutable(parent.jsDoc, j => j.tags);
+            const tag = factory.createJSDocComment(factory.createNodeArray(intersperse(comments, factory.createJSDocText("\n"))), factory.createNodeArray([...(filter(oldTags, predicate) || emptyArray)]));
+            const host = updateJSDocHost(parent);
+            this.insertJsdocCommentBefore(sourceFile, host, tag);
         }
 
         public replaceRangeWithText(sourceFile: SourceFile, range: TextRange, text: string): void {
@@ -761,6 +787,20 @@ namespace ts.textChanges {
             this.insertText(sourceFile, node.getStart(sourceFile), "export ");
         }
 
+        public insertImportSpecifierAtIndex(sourceFile: SourceFile, importSpecifier: ImportSpecifier, namedImports: NamedImports, index: number) {
+            const prevSpecifier = namedImports.elements[index - 1];
+            if (prevSpecifier) {
+                this.insertNodeInListAfter(sourceFile, prevSpecifier, importSpecifier);
+            }
+            else {
+                this.insertNodeBefore(
+                    sourceFile,
+                    namedImports.elements[0],
+                    importSpecifier,
+                    !positionsAreOnSameLine(namedImports.elements[0].getStart(), namedImports.parent.parent.getStart(), sourceFile));
+            }
+        }
+
         /**
          * This function should be used to insert nodes in lists when nodes don't carry separators as the part of the node range,
          * i.e. arguments in arguments lists, parameters in parameter lists etc.
@@ -920,6 +960,37 @@ namespace ts.textChanges {
         }
     }
 
+    function updateJSDocHost(parent: HasJSDoc): HasJSDoc {
+        if (parent.kind !== SyntaxKind.ArrowFunction) {
+            return parent;
+        }
+        const jsDocNode = parent.parent.kind === SyntaxKind.PropertyDeclaration ?
+            parent.parent as HasJSDoc :
+            parent.parent.parent as HasJSDoc;
+        jsDocNode.jsDoc = parent.jsDoc;
+        jsDocNode.jsDocCache = parent.jsDocCache;
+        return jsDocNode;
+    }
+
+    function tryMergeJsdocTags(oldTag: JSDocTag, newTag: JSDocTag): JSDocTag | undefined {
+        if (oldTag.kind !== newTag.kind) {
+            return undefined;
+        }
+        switch (oldTag.kind) {
+            case SyntaxKind.JSDocParameterTag: {
+                const oldParam = oldTag as JSDocParameterTag;
+                const newParam = newTag as JSDocParameterTag;
+                return isIdentifier(oldParam.name) && isIdentifier(newParam.name) && oldParam.name.escapedText === newParam.name.escapedText
+                    ? factory.createJSDocParameterTag(/*tagName*/ undefined, newParam.name, /*isBracketed*/ false, newParam.typeExpression, newParam.isNameFirst, oldParam.comment)
+                    : undefined;
+            }
+            case SyntaxKind.JSDocReturnTag:
+                return factory.createJSDocReturnTag(/*tagName*/ undefined, (newTag as JSDocReturnTag).typeExpression, oldTag.comment);
+            case SyntaxKind.JSDocTypeTag:
+                return factory.createJSDocTypeTag(/*tagName*/ undefined, (newTag as JSDocTypeTag).typeExpression, oldTag.comment);
+        }
+    }
+
     // find first non-whitespace position in the leading trivia of the node
     function startPositionToDeleteNodeInList(sourceFile: SourceFile, node: Node): number {
         return skipTrivia(sourceFile.text, getAdjustedStartPosition(sourceFile, node, { leadingTriviaOption: LeadingTriviaOption.IncludeAll }), /*stopAfterLineBreak*/ false, /*stopAtComments*/ true);
@@ -1002,15 +1073,6 @@ namespace ts.textChanges {
                     ? "" : options.suffix);
         }
 
-        function getFormatCodeSettingsForWriting({ options }: formatting.FormatContext, sourceFile: SourceFile): FormatCodeSettings {
-            const shouldAutoDetectSemicolonPreference = !options.semicolons || options.semicolons === SemicolonPreference.Ignore;
-            const shouldRemoveSemicolons = options.semicolons === SemicolonPreference.Remove || shouldAutoDetectSemicolonPreference && !probablyUsesSemicolons(sourceFile);
-            return {
-                ...options,
-                semicolons: shouldRemoveSemicolons ? SemicolonPreference.Remove : SemicolonPreference.Ignore,
-            };
-        }
-
         /** Note: this may mutate `nodeIn`. */
         function getFormattedTextOfNode(nodeIn: Node, sourceFile: SourceFile, pos: number, { indentation, prefix, delta }: InsertNodeOptions, newLineCharacter: string, formatContext: formatting.FormatContext, validate: ValidateNonFormattedText | undefined): string {
             const { node, text } = getNonformattedText(nodeIn, sourceFile, newLineCharacter);
@@ -1060,7 +1122,7 @@ namespace ts.textChanges {
         return skipTrivia(s, 0) === s.length;
     }
 
-    function assignPositionsToNode(node: Node): Node {
+    export function assignPositionsToNode(node: Node): Node {
         const visited = visitEachChild(node, assignPositionsToNode, nullTransformationContext, assignPositionsToNodeArray, assignPositionsToNode);
         // create proxy node for non synthesized nodes
         const newNode = nodeIsSynthesized(visited) ? visited : Object.create(visited) as Node;
@@ -1081,7 +1143,7 @@ namespace ts.textChanges {
 
     interface TextChangesWriter extends EmitTextWriter, PrintHandlers {}
 
-    function createWriter(newLine: string): TextChangesWriter {
+    export function createWriter(newLine: string): TextChangesWriter {
         let lastNonTriviaPosition = 0;
 
         const writer = createTextWriter(newLine);
