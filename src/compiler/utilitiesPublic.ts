@@ -645,6 +645,18 @@ namespace ts {
         }
     }
 
+    export function getDecorators(node: HasDecorators): readonly Decorator[] | undefined {
+        if (hasDecorators(node)) {
+            return filter(node.modifiers, isDecorator);
+        }
+    }
+
+    export function getModifiers(node: HasModifiers): readonly Modifier[] | undefined {
+        if (hasSyntacticModifier(node, ModifierFlags.Modifier)) {
+            return filter(node.modifiers, isModifier);
+        }
+    }
+
     function getJSDocParameterTagsWorker(param: ParameterDeclaration, noCache?: boolean): readonly JSDocParameterTag[] {
         if (param.name) {
             if (isIdentifier(param.name)) {
@@ -926,10 +938,13 @@ namespace ts {
             return emptyArray;
         }
         if (isJSDocTypeAlias(node)) {
-            Debug.assert(node.parent.kind === SyntaxKind.JSDocComment);
+            Debug.assert(node.parent.kind === SyntaxKind.JSDoc);
             return flatMap(node.parent.tags, tag => isJSDocTemplateTag(tag) ? tag.typeParameters : undefined);
         }
         if (node.typeParameters) {
+            return node.typeParameters;
+        }
+        if (canHaveIllegalTypeParameters(node) && node.typeParameters) {
             return node.typeParameters;
         }
         if (isInJSFile(node)) {
@@ -1114,6 +1129,19 @@ namespace ts {
         return isLiteralKind(node.kind);
     }
 
+    /** @internal */
+    export function isLiteralExpressionOfObject(node: Node) {
+        switch (node.kind) {
+            case SyntaxKind.ObjectLiteralExpression:
+            case SyntaxKind.ArrayLiteralExpression:
+            case SyntaxKind.RegularExpressionLiteral:
+            case SyntaxKind.FunctionExpression:
+            case SyntaxKind.ClassExpression:
+                return true;
+        }
+        return false;
+    }
+
     // Pseudo-literals
 
     /* @internal */
@@ -1187,11 +1215,13 @@ namespace ts {
             case SyntaxKind.DeclareKeyword:
             case SyntaxKind.DefaultKeyword:
             case SyntaxKind.ExportKeyword:
+            case SyntaxKind.InKeyword:
             case SyntaxKind.PublicKeyword:
             case SyntaxKind.PrivateKeyword:
             case SyntaxKind.ProtectedKeyword:
             case SyntaxKind.ReadonlyKeyword:
             case SyntaxKind.StaticKeyword:
+            case SyntaxKind.OutKeyword:
             case SyntaxKind.OverrideKeyword:
                 return true;
         }
@@ -1327,13 +1357,19 @@ namespace ts {
 
     // Type members
 
+    export function isModifierLike(node: Node): node is ModifierLike {
+        return isModifier(node) || isDecorator(node);
+    }
+
     export function isTypeElement(node: Node): node is TypeElement {
         const kind = node.kind;
         return kind === SyntaxKind.ConstructSignature
             || kind === SyntaxKind.CallSignature
             || kind === SyntaxKind.PropertySignature
             || kind === SyntaxKind.MethodSignature
-            || kind === SyntaxKind.IndexSignature;
+            || kind === SyntaxKind.IndexSignature
+            || kind === SyntaxKind.GetAccessor
+            || kind === SyntaxKind.SetAccessor;
     }
 
     export function isClassOrTypeElement(node: Node): node is ClassElement | TypeElement {
@@ -1538,6 +1574,7 @@ namespace ts {
             case SyntaxKind.TrueKeyword:
             case SyntaxKind.SuperKeyword:
             case SyntaxKind.NonNullExpression:
+            case SyntaxKind.ExpressionWithTypeArguments:
             case SyntaxKind.MetaProperty:
             case SyntaxKind.ImportKeyword: // technically this is only an Expression if it's in a CallExpression
                 return true;
@@ -1911,7 +1948,7 @@ namespace ts {
 
     /** True if node is of a kind that may contain comment text. */
     export function isJSDocCommentContainingNode(node: Node): boolean {
-        return node.kind === SyntaxKind.JSDocComment
+        return node.kind === SyntaxKind.JSDoc
             || node.kind === SyntaxKind.JSDocNamepathType
             || node.kind === SyntaxKind.JSDocText
             || isJSDocLinkLike(node)
@@ -1960,7 +1997,6 @@ namespace ts {
             case SyntaxKind.VariableDeclaration:
             case SyntaxKind.Parameter:
             case SyntaxKind.BindingElement:
-            case SyntaxKind.PropertySignature:
             case SyntaxKind.PropertyDeclaration:
             case SyntaxKind.PropertyAssignment:
             case SyntaxKind.EnumMember:
@@ -2010,5 +2046,16 @@ namespace ts {
     export function isJSDocLinkLike(node: Node): node is JSDocLink | JSDocLinkCode | JSDocLinkPlain {
         return node.kind === SyntaxKind.JSDocLink || node.kind === SyntaxKind.JSDocLinkCode || node.kind === SyntaxKind.JSDocLinkPlain;
     }
+
+    export function hasRestParameter(s: SignatureDeclaration | JSDocSignature): boolean {
+        const last = lastOrUndefined<ParameterDeclaration | JSDocParameterTag>(s.parameters);
+        return !!last && isRestParameter(last);
+    }
+
+    export function isRestParameter(node: ParameterDeclaration | JSDocParameterTag): boolean {
+        const type = isJSDocParameterTag(node) ? (node.typeExpression && node.typeExpression.type) : node.type;
+        return (node as ParameterDeclaration).dotDotDotToken !== undefined || !!type && type.kind === SyntaxKind.JSDocVariadicType;
+    }
+
     // #endregion
 }
