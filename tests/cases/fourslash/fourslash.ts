@@ -42,9 +42,8 @@
 //
 // TODO: figure out a better solution to the API exposure problem.
 
-/// <reference path="../../../src/compiler/diagnosticInformationMap.generated.ts" />
-
 declare module ts {
+    export const Diagnostics: typeof import("../../../src/compiler/diagnosticInformationMap.generated").Diagnostics;
     export type MapKey = string | number;
     export interface Map<T> {
         forEach(action: (value: T, key: string) => void): void;
@@ -90,6 +89,12 @@ declare module ts {
         Suggestion,
         Message
     }
+
+    enum OrganizeImportsMode {
+      All = "All",
+      SortAndCombine = "SortAndCombine",
+      RemoveUnused = "RemoveUnused",
+  }
 
     interface DiagnosticMessage {
         key: string;
@@ -279,8 +284,14 @@ declare namespace FourSlashInterface {
     class verify extends verifyNegatable {
         assertHasRanges(ranges: Range[]): void;
         caretAtMarker(markerName?: string): void;
-        completions(...options: CompletionsOptions[]): void;
-        applyCodeActionFromCompletion(markerName: string, options: {
+        completions(...options: CompletionsOptions[]): { andApplyCodeAction(options: {
+            name: string,
+            source: string,
+            description: string,
+            newFileContent?: string,
+            newRangeContent?: string,
+        }): void };
+        applyCodeActionFromCompletion(markerName: string | undefined, options: {
             name: string,
             source?: string,
             data?: ts.CompletionEntryData,
@@ -330,6 +341,7 @@ declare namespace FourSlashInterface {
         baselineGetFileReferences(fileName: string): void;
         symbolAtLocation(startRange: Range, ...declarationRanges: Range[]): void;
         typeOfSymbolAtLocation(range: Range, symbol: any, expected: string): void;
+        typeAtLocation(range: Range, expected: string): void;
         /** @deprecated Use baselineFindAllReferences instead */
         singleReferenceGroup(definition: ReferencesDefinition, ranges?: Range[] | string): void;
         rangesAreOccurrences(isWriteAccess?: boolean, ranges?: Range[]): void;
@@ -370,6 +382,7 @@ declare namespace FourSlashInterface {
         getAndApplyCodeFix(errorCode?: number, index?: number): void;
         importFixAtPosition(expectedTextArray: string[], errorCode?: number, options?: UserPreferences): void;
         importFixModuleSpecifiers(marker: string, moduleSpecifiers: string[], options?: UserPreferences): void;
+        baselineAutoImports(marker: string, fullNamesForCodeFix?: string[], options?: UserPreferences): void;
 
         navigationBar(json: any, options?: { checkSpans?: boolean }): void;
         navigationTree(json: any, options?: { checkSpans?: boolean }): void;
@@ -442,7 +455,7 @@ declare namespace FourSlashInterface {
 
         generateTypes(...options: GenerateTypesOptions[]): void;
 
-        organizeImports(newContent: string): void;
+        organizeImports(newContent: string, mode?: ts.OrganizeImportsMode, preferences?: UserPreferences): void;
 
         toggleLineComment(newFileContent: string): void;
         toggleMultilineComment(newFileContent: string): void;
@@ -666,6 +679,12 @@ declare namespace FourSlashInterface {
         readonly providePrefixAndSuffixTextForRename?: boolean;
         readonly allowRenameOfImportPath?: boolean;
         readonly autoImportFileExcludePatterns?: readonly string[];
+        readonly organizeImportsIgnoreCase?: "auto" | boolean;
+        readonly organizeImportsCollation?: "unicode" | "ordinal";
+        readonly organizeImportsLocale?: string;
+        readonly organizeImportsNumericCollation?: boolean;
+        readonly organizeImportsAccentCollation?: boolean;
+        readonly organizeImportsCaseFirst?: "upper" | "lower" | false;
     }
     interface InlayHintsOptions extends UserPreferences {
         readonly includeInlayParameterNameHints?: "none" | "literals" | "all";
@@ -879,6 +898,7 @@ declare namespace completion {
         ClassMemberSnippet = "ClassMemberSnippet/",
         TypeOnlyAlias = "TypeOnlyAlias/",
         ObjectLiteralMethodSnippet = "ObjectLiteralMethodSnippet/",
+        SwitchCases = "SwitchCases/",
     }
     export const globalThisEntry: Entry;
     export const undefinedVarEntry: Entry;
