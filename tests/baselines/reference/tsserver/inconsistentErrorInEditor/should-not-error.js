@@ -1,5 +1,25 @@
-Info 0    [00:00:02.000] Provided types map file "/a/lib/typesMap.json" doesn't exist
-Info 1    [00:00:03.000] request:
+Info seq  [hh:mm:ss:mss] currentDirectory:: /home/src/Vscode/Projects/bin useCaseSensitiveFileNames:: false
+Info seq  [hh:mm:ss:mss] libs Location:: /home/src/tslibs/TS/Lib
+Info seq  [hh:mm:ss:mss] globalTypingsCacheLocation:: /home/src/Library/Caches/typescript
+Info seq  [hh:mm:ss:mss] Provided types map file "/home/src/tslibs/TS/Lib/typesMap.json" doesn't exist
+Before request
+//// [/home/src/tslibs/TS/Lib/lib.d.ts]
+/// <reference no-default-lib="true"/>
+interface Boolean {}
+interface Function {}
+interface CallableFunction {}
+interface NewableFunction {}
+interface IArguments {}
+interface Number { toExponential: any; }
+interface Object {}
+interface RegExp {}
+interface String { charAt: any; }
+interface Array<T> { length: number; [n: number]: T; }
+interface ReadonlyArray<T> {}
+declare const console: { log(msg: any): void; };
+
+
+Info seq  [hh:mm:ss:mss] request:
     {
       "command": "updateOpen",
       "arguments": {
@@ -16,51 +36,77 @@ Info 1    [00:00:03.000] request:
       "seq": 1,
       "type": "request"
     }
-Before request
+Info seq  [hh:mm:ss:mss] getConfigFileNameForFile:: File: ^/untitled/ts-nul-authority/Untitled-1 ProjectRootPath: undefined:: Result: undefined
+Info seq  [hh:mm:ss:mss] Creating InferredProject: /dev/null/inferredProject1*, currentDirectory: /home/src/Vscode/Projects/bin
+Info seq  [hh:mm:ss:mss] Starting updateGraphWorker: Project: /dev/null/inferredProject1*
+Info seq  [hh:mm:ss:mss] FileWatcher:: Added:: WatchInfo: /home/src/tslibs/TS/Lib/lib.d.ts 500 undefined WatchType: Closed Script info
+Info seq  [hh:mm:ss:mss] DirectoryWatcher:: Added:: WatchInfo: /home/src/Vscode/Projects/bin/node_modules/@types 1 undefined Project: /dev/null/inferredProject1* WatchType: Type roots
+Info seq  [hh:mm:ss:mss] Elapsed:: *ms DirectoryWatcher:: Added:: WatchInfo: /home/src/Vscode/Projects/bin/node_modules/@types 1 undefined Project: /dev/null/inferredProject1* WatchType: Type roots
+Info seq  [hh:mm:ss:mss] DirectoryWatcher:: Added:: WatchInfo: /home/src/Vscode/Projects/node_modules/@types 1 undefined Project: /dev/null/inferredProject1* WatchType: Type roots
+Info seq  [hh:mm:ss:mss] Elapsed:: *ms DirectoryWatcher:: Added:: WatchInfo: /home/src/Vscode/Projects/node_modules/@types 1 undefined Project: /dev/null/inferredProject1* WatchType: Type roots
+Info seq  [hh:mm:ss:mss] DirectoryWatcher:: Added:: WatchInfo: /home/src/Vscode/node_modules/@types 1 undefined Project: /dev/null/inferredProject1* WatchType: Type roots
+Info seq  [hh:mm:ss:mss] Elapsed:: *ms DirectoryWatcher:: Added:: WatchInfo: /home/src/Vscode/node_modules/@types 1 undefined Project: /dev/null/inferredProject1* WatchType: Type roots
+Info seq  [hh:mm:ss:mss] Finishing updateGraphWorker: Project: /dev/null/inferredProject1* projectStateVersion: 1 projectProgramVersion: 0 structureChanged: true structureIsReused:: Not Elapsed:: *ms
+Info seq  [hh:mm:ss:mss] Project '/dev/null/inferredProject1*' (Inferred)
+Info seq  [hh:mm:ss:mss] 	Files (2)
+	/home/src/tslibs/TS/Lib/lib.d.ts Text-1 "/// <reference no-default-lib=\"true\"/>\ninterface Boolean {}\ninterface Function {}\ninterface CallableFunction {}\ninterface NewableFunction {}\ninterface IArguments {}\ninterface Number { toExponential: any; }\ninterface Object {}\ninterface RegExp {}\ninterface String { charAt: any; }\ninterface Array<T> { length: number; [n: number]: T; }\ninterface ReadonlyArray<T> {}\ndeclare const console: { log(msg: any): void; };"
+	^/untitled/ts-nul-authority/Untitled-1 SVC-1-0 "export function foo<U>() {\r\n    /*$*/return bar<U>;\r\n}\r\n\r\nexport function bar<T>(x: T) {\r\n    return x;\r\n}\r\n\r\nlet x = foo()(42);"
 
-PolledWatches::
 
-FsWatches::
-
-FsWatchesRecursive::
-
-Info 2    [00:00:04.000] Search path: ^/untitled/ts-nul-authority
-Info 3    [00:00:05.000] For info: ^/untitled/ts-nul-authority/Untitled-1 :: No config files found.
-Info 4    [00:00:06.000] Starting updateGraphWorker: Project: /dev/null/inferredProject1*
-Info 5    [00:00:07.000] FileWatcher:: Added:: WatchInfo: /a/lib/lib.d.ts 500 undefined Project: /dev/null/inferredProject1* WatchType: Missing file
-Info 6    [00:00:08.000] Finishing updateGraphWorker: Project: /dev/null/inferredProject1* Version: 1 structureChanged: true structureIsReused:: Not Elapsed:: *ms
-Info 7    [00:00:09.000] Project '/dev/null/inferredProject1*' (Inferred)
-Info 8    [00:00:10.000] 	Files (1)
-	^/untitled/ts-nul-authority/Untitled-1
-
-
+	../../../tslibs/TS/Lib/lib.d.ts
+	  Default library for target 'es5'
 	^/untitled/ts-nul-authority/Untitled-1
 	  Root file specified for compilation
 
-Info 9    [00:00:11.000] -----------------------------------------------
-Info 10   [00:00:12.000] Project '/dev/null/inferredProject1*' (Inferred)
-Info 10   [00:00:13.000] 	Files (1)
+Info seq  [hh:mm:ss:mss] -----------------------------------------------
+Info seq  [hh:mm:ss:mss] Project '/dev/null/inferredProject1*' (Inferred)
+Info seq  [hh:mm:ss:mss] 	Files (2)
 
-Info 10   [00:00:14.000] -----------------------------------------------
-Info 10   [00:00:15.000] Open files: 
-Info 10   [00:00:16.000] 	FileName: ^/untitled/ts-nul-authority/Untitled-1 ProjectRootPath: undefined
-Info 10   [00:00:17.000] 		Projects: /dev/null/inferredProject1*
+Info seq  [hh:mm:ss:mss] -----------------------------------------------
+Info seq  [hh:mm:ss:mss] Open files: 
+Info seq  [hh:mm:ss:mss] 	FileName: ^/untitled/ts-nul-authority/Untitled-1 ProjectRootPath: undefined
+Info seq  [hh:mm:ss:mss] 		Projects: /dev/null/inferredProject1*
+Info seq  [hh:mm:ss:mss] response:
+    {
+      "response": true,
+      "responseRequired": true,
+      "performanceData": {
+        "updateGraphDurationMs": *
+      }
+    }
 After request
 
 PolledWatches::
-/a/lib/lib.d.ts:
+/home/src/Vscode/Projects/bin/node_modules/@types: *new*
+  {"pollingInterval":500}
+/home/src/Vscode/Projects/node_modules/@types: *new*
+  {"pollingInterval":500}
+/home/src/Vscode/node_modules/@types: *new*
   {"pollingInterval":500}
 
 FsWatches::
+/home/src/tslibs/TS/Lib/lib.d.ts: *new*
+  {}
 
-FsWatchesRecursive::
+Projects::
+/dev/null/inferredProject1* (Inferred) *new*
+    projectStateVersion: 1
+    projectProgramVersion: 1
+    autoImportProviderHost: false
 
-Info 10   [00:00:18.000] response:
-    {
-      "response": true,
-      "responseRequired": true
-    }
-Info 11   [00:00:19.000] request:
+ScriptInfos::
+/home/src/tslibs/TS/Lib/lib.d.ts *new*
+    version: Text-1
+    containingProjects: 1
+        /dev/null/inferredProject1*
+^/untitled/ts-nul-authority/Untitled-1 (Dynamic) (Open) *new*
+    version: SVC-1-0
+    containingProjects: 1
+        /dev/null/inferredProject1* *default*
+
+Before request
+
+Info seq  [hh:mm:ss:mss] request:
     {
       "command": "encodedSemanticClassifications-full",
       "arguments": {
@@ -72,27 +118,7 @@ Info 11   [00:00:19.000] request:
       "seq": 2,
       "type": "request"
     }
-Before request
-
-PolledWatches::
-/a/lib/lib.d.ts:
-  {"pollingInterval":500}
-
-FsWatches::
-
-FsWatchesRecursive::
-
-After request
-
-PolledWatches::
-/a/lib/lib.d.ts:
-  {"pollingInterval":500}
-
-FsWatches::
-
-FsWatchesRecursive::
-
-Info 12   [00:00:20.000] response:
+Info seq  [hh:mm:ss:mss] response:
     {
       "response": {
         "spans": [
@@ -134,7 +160,11 @@ Info 12   [00:00:20.000] response:
       },
       "responseRequired": true
     }
-Info 13   [00:00:21.000] request:
+After request
+
+Before request
+
+Info seq  [hh:mm:ss:mss] request:
     {
       "command": "geterr",
       "arguments": {
@@ -146,94 +176,92 @@ Info 13   [00:00:21.000] request:
       "seq": 3,
       "type": "request"
     }
-Before request
-
-PolledWatches::
-/a/lib/lib.d.ts:
-  {"pollingInterval":500}
-
-FsWatches::
-
-FsWatchesRecursive::
-
 After request
 
-PolledWatches::
-/a/lib/lib.d.ts:
-  {"pollingInterval":500}
+Timeout callback:: count: 1
+1: checkOne *new*
 
-FsWatches::
+Before running Timeout callback:: count: 1
+1: checkOne
 
-FsWatchesRecursive::
-
-Info 14   [00:00:22.000] response:
+Info seq  [hh:mm:ss:mss] event:
     {
-      "responseRequired": false
+      "seq": 0,
+      "type": "event",
+      "event": "syntaxDiag",
+      "body": {
+        "file": "^/untitled/ts-nul-authority/Untitled-1",
+        "diagnostics": []
+      }
     }
-Before checking timeout queue length (1) and running
+After running Timeout callback:: count: 0
 
-PolledWatches::
-/a/lib/lib.d.ts:
-  {"pollingInterval":500}
+Immedidate callback:: count: 1
+1: semanticCheck *new*
 
-FsWatches::
+Before running Immedidate callback:: count: 1
+1: semanticCheck
 
-FsWatchesRecursive::
+Info seq  [hh:mm:ss:mss] event:
+    {
+      "seq": 0,
+      "type": "event",
+      "event": "semanticDiag",
+      "body": {
+        "file": "^/untitled/ts-nul-authority/Untitled-1",
+        "diagnostics": []
+      }
+    }
+After running Immedidate callback:: count: 1
 
-Info 15   [00:00:23.000] event:
-    {"seq":0,"type":"event","event":"syntaxDiag","body":{"file":"^/untitled/ts-nul-authority/Untitled-1","diagnostics":[]}}
-After checking timeout queue length (1) and running
+Immedidate callback:: count: 1
+2: suggestionCheck *new*
 
-PolledWatches::
-/a/lib/lib.d.ts:
-  {"pollingInterval":500}
+Before running Immedidate callback:: count: 1
+2: suggestionCheck
 
-FsWatches::
-
-FsWatchesRecursive::
-
-Before running immediate callbacks and checking length (1)
-
-PolledWatches::
-/a/lib/lib.d.ts:
-  {"pollingInterval":500}
-
-FsWatches::
-
-FsWatchesRecursive::
-
-Info 16   [00:00:24.000] event:
-    {"seq":0,"type":"event","event":"semanticDiag","body":{"file":"^/untitled/ts-nul-authority/Untitled-1","diagnostics":[]}}
-Before running immediate callbacks and checking length (1)
-
-PolledWatches::
-/a/lib/lib.d.ts:
-  {"pollingInterval":500}
-
-FsWatches::
-
-FsWatchesRecursive::
-
-Before running immediate callbacks and checking length (1)
-
-PolledWatches::
-/a/lib/lib.d.ts:
-  {"pollingInterval":500}
-
-FsWatches::
-
-FsWatchesRecursive::
-
-Info 17   [00:00:25.000] event:
-    {"seq":0,"type":"event","event":"suggestionDiag","body":{"file":"^/untitled/ts-nul-authority/Untitled-1","diagnostics":[{"start":{"line":9,"offset":5},"end":{"line":9,"offset":6},"text":"'x' is declared but its value is never read.","code":6133,"category":"suggestion","reportsUnnecessary":true}]}}
-Info 18   [00:00:26.000] event:
-    {"seq":0,"type":"event","event":"requestCompleted","body":{"request_seq":3}}
-Before running immediate callbacks and checking length (1)
-
-PolledWatches::
-/a/lib/lib.d.ts:
-  {"pollingInterval":500}
-
-FsWatches::
-
-FsWatchesRecursive::
+Info seq  [hh:mm:ss:mss] event:
+    {
+      "seq": 0,
+      "type": "event",
+      "event": "suggestionDiag",
+      "body": {
+        "file": "^/untitled/ts-nul-authority/Untitled-1",
+        "diagnostics": [
+          {
+            "start": {
+              "line": 9,
+              "offset": 5
+            },
+            "end": {
+              "line": 9,
+              "offset": 6
+            },
+            "text": "'x' is declared but its value is never read.",
+            "code": 6133,
+            "category": "suggestion",
+            "reportsUnnecessary": true
+          }
+        ]
+      }
+    }
+Info seq  [hh:mm:ss:mss] event:
+    {
+      "seq": 0,
+      "type": "event",
+      "event": "requestCompleted",
+      "body": {
+        "request_seq": 3,
+        "performanceData": {
+          "diagnosticsDuration": [
+            {
+              "syntaxDiag": *,
+              "semanticDiag": *,
+              "suggestionDiag": *,
+              "file": "^/untitled/ts-nul-authority/Untitled-1"
+            }
+          ]
+        }
+      }
+    }
+After running Immedidate callback:: count: 0

@@ -69,10 +69,8 @@ import {
     modifierToFlag,
     ModuleBlock,
     Node,
-    ObjectLiteralExpression,
     ObjectTypeDeclaration,
     Program,
-    Push,
     ReturnStatement,
     SourceFile,
     SwitchStatement,
@@ -82,7 +80,7 @@ import {
     toPath,
     tryCast,
     TryStatement,
-} from "./_namespaces/ts";
+} from "./_namespaces/ts.js";
 
 export interface DocumentHighlights {
     fileName: string;
@@ -108,7 +106,7 @@ export namespace DocumentHighlights {
         return {
             fileName: sourceFile.fileName,
             textSpan: createTextSpanFromNode(node, sourceFile),
-            kind: HighlightSpanKind.none
+            kind: HighlightSpanKind.none,
         };
     }
 
@@ -179,6 +177,7 @@ export namespace DocumentHighlights {
             case SyntaxKind.YieldKeyword:
                 return highlightSpans(getYieldOccurrences(node));
             case SyntaxKind.InKeyword:
+            case SyntaxKind.OutKeyword:
                 return undefined;
             default:
                 return isModifierKind(node.kind) && (isDeclaration(node.parent) || isVariableStatement(node.parent))
@@ -187,8 +186,7 @@ export namespace DocumentHighlights {
         }
 
         function getFromAllDeclarations<T extends Node>(nodeTest: (node: Node) => node is T, keywords: readonly SyntaxKind[]): HighlightSpan[] | undefined {
-            return useParent(node.parent, nodeTest, decl => mapDefined(tryCast(decl, canHaveSymbol)?.symbol.declarations, d =>
-                nodeTest(d) ? find(d.getChildren(sourceFile), c => contains(keywords, c.kind)) : undefined));
+            return useParent(node.parent, nodeTest, decl => mapDefined(tryCast(decl, canHaveSymbol)?.symbol.declarations, d => nodeTest(d) ? find(d.getChildren(sourceFile), c => contains(keywords, c.kind)) : undefined));
         }
 
         function useParent<T extends Node>(node: Node, nodeTest: (node: Node) => node is T, getNodes: (node: T, sourceFile: SourceFile) => readonly Node[] | undefined): HighlightSpan[] | undefined {
@@ -212,7 +210,8 @@ export namespace DocumentHighlights {
             // Exceptions thrown within a try block lacking a catch clause are "owned" in the current context.
             return concatenate(
                 node.catchClause ? aggregateOwnedThrowStatements(node.catchClause) : node.tryBlock && aggregateOwnedThrowStatements(node.tryBlock),
-                node.finallyBlock && aggregateOwnedThrowStatements(node.finallyBlock));
+                node.finallyBlock && aggregateOwnedThrowStatements(node.finallyBlock),
+            );
         }
         // Do not cross function boundaries.
         return isFunctionLike(node) ? undefined : flatMapChildren(node, aggregateOwnedThrowStatements);
@@ -294,7 +293,7 @@ export namespace DocumentHighlights {
 
     function getNodesToSearchForModifier(declaration: Node, modifierFlag: ModifierFlags): readonly Node[] | undefined {
         // Types of node whose children might have modifiers.
-        const container = declaration.parent as ModuleBlock | SourceFile | Block | CaseClause | DefaultClause | ConstructorDeclaration | MethodDeclaration | FunctionDeclaration | ObjectTypeDeclaration | ObjectLiteralExpression;
+        const container = declaration.parent as ModuleBlock | SourceFile | Block | CaseClause | DefaultClause | ConstructorDeclaration | MethodDeclaration | FunctionDeclaration | ObjectTypeDeclaration;
         switch (container.kind) {
             case SyntaxKind.ModuleBlock:
             case SyntaxKind.SourceFile:
@@ -332,15 +331,12 @@ export namespace DocumentHighlights {
                 return nodes;
 
             // Syntactically invalid positions that the parser might produce anyway
-            case SyntaxKind.ObjectLiteralExpression:
-                return undefined;
-
             default:
-                Debug.assertNever(container, "Invalid container kind.");
+                return undefined;
         }
     }
 
-    function pushKeywordIf(keywordList: Push<Node>, token: Node | undefined, ...expected: SyntaxKind[]): boolean {
+    function pushKeywordIf(keywordList: Node[], token: Node | undefined, ...expected: SyntaxKind[]): boolean {
         if (token && contains(expected, token.kind)) {
             keywordList.push(token);
             return true;
@@ -387,7 +383,6 @@ export namespace DocumentHighlights {
                     return getLoopBreakContinueOccurrences(owner as IterationStatement);
                 case SyntaxKind.SwitchStatement:
                     return getSwitchCaseDefaultOccurrences(owner as SwitchStatement);
-
             }
         }
 
@@ -495,7 +490,6 @@ export namespace DocumentHighlights {
             });
         });
 
-
         return keywords;
     }
 
@@ -551,7 +545,7 @@ export namespace DocumentHighlights {
                     result.push({
                         fileName: sourceFile.fileName,
                         textSpan: createTextSpanFromBounds(elseKeyword.getStart(), ifKeyword.end),
-                        kind: HighlightSpanKind.reference
+                        kind: HighlightSpanKind.reference,
                     });
                     i++; // skip the next keyword
                     continue;
